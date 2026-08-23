@@ -1,0 +1,4 @@
+{
+  "ignoreDependencies": ["tsx", "vec3", "prismarine-block", "prismarine-item"],
+  "ignore": ["mindcraft/**"]
+}

@@ -1,0 +1,5 @@
+/server
+/.direnv
+node_modules
+.grafana-token
+world.json

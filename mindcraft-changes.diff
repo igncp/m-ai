@@ -1,0 +1,82 @@
+diff --git a/profiles/a1.json b/profiles/a1.json
+new file mode 100644
+index 0000000..b0fdba2
+--- /dev/null
++++ b/profiles/a1.json
+@@ -0,0 +1,7 @@
++{
++    "name": "aaa1",
++
++    "model": "ollama/sweaterdog/andy-4:micro-q8_0",
++    
++    "embedding": "ollama"
++}
+diff --git a/profiles/a2.json b/profiles/a2.json
+new file mode 100644
+index 0000000..e8cb130
+--- /dev/null
++++ b/profiles/a2.json
+@@ -0,0 +1,7 @@
++{
++    "name": "aaa2",
++
++    "model": "ollama/sweaterdog/andy-4:micro-q8_0",
++    
++    "embedding": "ollama"
++}
+diff --git a/profiles/andy-4.json b/profiles/andy-4.json
+deleted file mode 100644
+index 2048a80..0000000
+--- a/profiles/andy-4.json
++++ /dev/null
+@@ -1,7 +0,0 @@
+-{
+-    "name": "andy_4",
+-
+-    "model": "ollama/sweaterdog/andy-4:micro-q8_0",
+-    
+-    "embedding": "ollama"
+-}
+diff --git a/settings.js b/settings.js
+index e59457d..289b6a9 100644
+--- a/settings.js
++++ b/settings.js
+@@ -1,7 +1,7 @@
+ const settings = {
+-    "minecraft_version": "auto", // or specific version like "1.21.6"
+-    "host": "127.0.0.1", // or "localhost", "your.ip.address.here"
+-    "port": 55916, // set to -1 to automatically scan for open ports
++    "minecraft_version": "1.21.1", // or specific version like "1.21.6"
++    "host": "localhost", // or "localhost", "your.ip.address.here"
++    "port": 25565, // set to -1 to automatically scan for open ports
+     "auth": "offline", // or "microsoft"
+ 
+     // the mindserver manages all agents and hosts the UI
+@@ -10,7 +10,7 @@ const settings = {
+     
+     "base_profile": "assistant", // survival, assistant, creative, or god_mode
+     "profiles": [
+-        "./andy.json",
++        // "./andy.json",
+         // "./profiles/gpt.json",
+         // "./profiles/claude.json",
+         // "./profiles/gemini.json",
+@@ -20,7 +20,8 @@ const settings = {
+         // "./profiles/mistral.json",
+         // "./profiles/deepseek.json",
+         // "./profiles/mercury.json",
+-        // "./profiles/andy-4.json", // Supports up to 75 messages!
++        "./profiles/a1.json", // Supports up to 75 messages!
++        "./profiles/a2.json", // Supports up to 75 messages!
+ 
+         // using more than 1 profile requires you to /msg each bot indivually
+         // individual profiles override values from the base profile
+@@ -40,7 +41,7 @@ const settings = {
+     "language": "en", // translate to/from this language. Supports these language names: https://cloud.google.com/translate/docs/languages
+     "render_bot_view": false, // show bot's view in browser at localhost:3000, 3001...
+ 
+-    "allow_insecure_coding": false, // allows newAction command and model can write/run code on your computer. enable at own risk
++    "allow_insecure_coding": true, // allows newAction command and model can write/run code on your computer. enable at own risk
+     "allow_vision": false, // allows vision model to interpret screenshots as inputs
+     "blocked_actions" : ["!checkBlueprint", "!checkBlueprintLevel", "!getBlueprint", "!getBlueprintLevel"] , // commands to disable and remove from docs. Ex: ["!setMode"]
+     "code_timeout_mins": -1, // minutes code is allowed to run. -1 for no timeout

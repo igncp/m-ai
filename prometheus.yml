@@ -1,0 +1,21 @@
+global:
+  scrape_interval: 2s
+
+scrape_configs:
+  - job_name: "block"
+    scrape_interval: 1s
+    static_configs:
+      - targets:
+          - "localhost:50000"
+          - "localhost:6000"
+          - "localhost:6001"
+          - "localhost:6002"
+          - "localhost:6003"
+          - "localhost:6004"
+          - "localhost:6005"
+          - "localhost:6006"
+          - "localhost:6007"
+          - "localhost:6008"
+          - "localhost:6009"
+          - "localhost:6010"
+    metrics_path: "/prometheus/metrics"
