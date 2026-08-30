@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-cd "$(dirname "$0")/../mindcraft"
+cd mindcraft
 
 git reset --hard
 rm -f profiles/a1.json profiles/a2.json

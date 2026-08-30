@@ -4,7 +4,7 @@
   "main": "index.js",
   "scripts": {
     "check-ts": "tsc --noEmit --project .",
-    "fix": "knip && eslint --fix src && prettier --write 'src/**/*.ts' && tsc --noEmit --project ."
+    "fix": "knip && eslint --fix src && prettier --write 'src/**/*.ts' 'k8s/**/*.yaml' && tsc --noEmit --project ."
   },
   "author": "",
   "license": "ISC",

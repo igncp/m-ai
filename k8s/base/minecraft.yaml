@@ -1,0 +1,114 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bukkit-yml
+data:
+  bukkit.yml: |
+    # kubectl cp minecraft:bukkit.yml bukkit.yml
+    settings:
+      allow-end: true
+      warn-on-overload: true
+      permissions-file: permissions.yml
+      update-folder: update
+      plugin-profiling: false
+      connection-throttle: -1
+      query-plugins: true
+      deprecated-verbose: default
+      shutdown-message: Server closed
+      minimum-api: none
+      use-map-color-cache: true
+    spawn-limits:
+      monsters: 70
+      animals: 10
+      water-animals: 5
+      water-ambient: 20
+      water-underground-creature: 5
+      axolotls: 5
+      ambient: 15
+    chunk-gc:
+      period-in-ticks: 600
+    ticks-per:
+      animal-spawns: 400
+      monster-spawns: 1
+      water-spawns: 1
+      water-ambient-spawns: 1
+      water-underground-creature-spawns: 1
+      axolotl-spawns: 1
+      ambient-spawns: 1
+      autosave: 6000
+    aliases: now-in-commands.yml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: minecraft
+  name: minecraft
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: minecraft
+  template:
+    metadata:
+      labels:
+        app: minecraft
+    spec:
+      nodeSelector:
+        function: minecraft-server
+      initContainers:
+        - command:
+            - sh
+            - -c
+            - cp /config/bukkit.yml /data/bukkit.yml
+          image: itzg/minecraft-server:latest
+          name: install-bukkit-config
+          volumeMounts:
+            - mountPath: /data
+              name: volume-db
+              subPath: minecraft
+            - mountPath: /config
+              name: bukkit-yml
+      containers:
+        - env:
+            - name: VERSION
+              value: 1.21.1
+            - name: ONLINE_MODE
+              value: "false"
+            - name: EULA
+              value: "TRUE"
+            - name: SERVER_PORT
+              value: "80"
+            - name: TYPE
+              value: PAPER
+          image: itzg/minecraft-server:latest
+          name: minecraft
+          ports:
+            - containerPort: 80
+              hostPort: 25565
+          volumeMounts:
+            - mountPath: /data
+              name: volume-db
+              subPath: minecraft
+      volumes:
+        - name: volume-db
+          persistentVolumeClaim:
+            claimName: pvc-minecraft
+        - configMap:
+            name: bukkit-yml
+          name: bukkit-yml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    name: minecraft
+  name: minecraft
+spec:
+  ports:
+    - port: 80
+      targetPort: 80
+  selector:
+    app: minecraft

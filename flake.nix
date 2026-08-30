@@ -17,6 +17,7 @@
       devShell = pkgs.mkShell {
         shellHook = ''
           echo "Nix shell for ${system}"
+          export KUBECONFIG=$HOME/.kube/config
         '';
         packages = with pkgs; [
           bun
