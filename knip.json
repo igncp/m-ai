@@ -1,4 +1,11 @@
 {
-  "ignoreDependencies": ["tsx", "vec3", "prismarine-block", "prismarine-item"],
+  "entry": ["src/**/*.ts", "scripts/**/*.ts"],
+  "ignoreDependencies": [
+    "prettier",
+    "tsx",
+    "vec3",
+    "prismarine-block",
+    "prismarine-item"
+  ],
   "ignore": ["mindcraft/**"]
 }

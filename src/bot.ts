@@ -39,8 +39,8 @@ const runBot = async (opts: {
 
   const botOptions: BotOptions = {
     auth: "offline",
-    host: "localhost",
-    port: 25565,
+    host: process.env.MINECRAFT_HOST || "localhost",
+    port: Number(process.env.MINECRAFT_PORT || 25565),
     respawn: true,
     username: "minion" + botNum,
     version: "1.21.1",

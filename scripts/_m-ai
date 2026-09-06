@@ -1,0 +1,24 @@
+#compdef mai
+
+_mai() {
+  local -a commands
+  commands=(
+    'build-image:Build multi-architecture M-AI images'
+    'deploy-image:Push built images and create multi-architecture tags'
+    'list-image-tags:List registry image tags by creation time and size'
+    'build-deploy-image:Build and deploy multi-architecture images'
+    'setup-buildx:Create the M-AI multi-architecture Buildx builder'
+    'docker-prune:Remove local M-AI Buildx resources and images'
+    'get-commands-history:Print the main player chat commands'
+    'restart-daemon:Roll out the daemon and pull its latest image'
+    'fix:Format and validate the project'
+    'check-ts:Type-check the project'
+    'generate-grafana:Generate the Grafana dashboard JSON'
+    'setup:Set up the Mindcraft development environment'
+    'kube-setup:Configure kubectl and install Prometheus Operator'
+  )
+
+  _describe -t commands 'm-ai.sh command' commands
+}
+
+compdef _mai mai ./mai ./scripts/m-ai.sh scripts/m-ai.sh

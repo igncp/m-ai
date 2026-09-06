@@ -22,10 +22,10 @@ const getBotPort = (index: number): number => {
   return BOT_PORT + index;
 };
 
-const botClient = (index: number) => {
+const botClient = (index: number, host = "localhost") => {
   const fetchBot = async (route: string, init?: RequestInit) => {
     const response = await fetch(
-      `http://localhost:${getBotPort(index)}${route}`,
+      `http://${host}:${getBotPort(index)}${route}`,
       init,
     );
 

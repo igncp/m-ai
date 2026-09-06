@@ -14,6 +14,7 @@ ports:
 endpoints:
   - addresses:
       - "192.168.X.X"
+    hostname: host-a
     conditions:
       ready: true
 ---
@@ -33,5 +34,46 @@ ports:
 endpoints:
   - addresses:
       - "192.168.X.X"
+    hostname: host-a
+    conditions:
+      ready: true
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: external-node-exporter-slice-9400
+  namespace: default
+  labels:
+    kubernetes.io/service-name: external-node-exporter
+    k8s-app: node-exporter
+addressType: IPv4
+ports:
+  - name: metrics-9400
+    port: 9400
+    protocol: TCP
+endpoints:
+  - addresses:
+      - "192.168.X.X"
+    hostname: host-a
+    conditions:
+      ready: true
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: external-node-exporter-slice-9300
+  namespace: default
+  labels:
+    kubernetes.io/service-name: external-node-exporter
+    k8s-app: node-exporter
+addressType: IPv4
+ports:
+  - name: metrics-9300
+    port: 9300
+    protocol: TCP
+endpoints:
+  - addresses:
+      - "192.168.X.X"
+    hostname: host-a
     conditions:
       ready: true

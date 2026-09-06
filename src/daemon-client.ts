@@ -20,7 +20,7 @@ type RoutesParams = {
 };
 
 const daemonClient = {
-  baseUrl: "http://localhost:50000",
+  baseUrl: process.env.DAEMON_BASE_URL || "http://localhost:50000",
 
   createBot: async (minionIndex: number = 0, constantGoal?: string) => {
     await fetch(`${daemonClient.baseUrl}/${dameonRoutes.createBot}`, {

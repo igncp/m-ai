@@ -1,8 +1,13 @@
 /server
 /.direnv
 node_modules
+.env
 .grafana-token
 world.json
+
+/build
+/dist
+/result
 
 k8s/overlays/*
 !k8s/overlays/kustomization.yaml

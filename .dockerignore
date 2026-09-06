@@ -1,0 +1,11 @@
+.git
+.direnv
+.env
+.grafana-token
+node_modules
+build/node_modules-*
+build/m-ai-closure-*/node_modules
+dist
+result
+server
+world.json

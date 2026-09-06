@@ -3,7 +3,6 @@ import { program } from "commander";
 import { runBot } from "./bot";
 import { startDaemon, stopDaemon } from "./daemon";
 import { daemonClient } from "./daemon-client";
-import { printGrafanaDashboard } from "./grafana";
 
 // https://github.com/PrismarineJS/mineflayer/blob/master/docs/api.md
 
@@ -110,16 +109,6 @@ const main = () => {
     })
     .argument("<index>", "Index of the bot")
     .argument("[constantGoal]", "Constant goal for the bot");
-
-  program
-    .command("grafana")
-    .description("Print Grafana dashboard")
-    .action(() => {
-      const dashboard = printGrafanaDashboard();
-
-      // eslint-disable-next-line no-console
-      console.log(JSON.stringify(dashboard, null, 2));
-    });
 
   program.parse();
 };

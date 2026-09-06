@@ -4,3 +4,37 @@ kind: Kustomization
 resources:
   - ../base
   - private-ips.yaml
+
+configMapGenerator:
+  - name: registry-host
+    envs:
+      - registry-host.env
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+replacements:
+  - source:
+      fieldPath: data.registryHost
+      kind: ConfigMap
+      name: registry-host
+    targets:
+      - fieldPaths:
+          - spec.template.spec.containers.[name=daemon].image
+          - spec.template.spec.containers.[name=daemon].env.[name=M_AI_IMAGE].value
+        options:
+          delimiter: /
+          index: 0
+        select:
+          kind: Deployment
+          name: m-ai-daemon
+  - source:
+      fieldPath: data.mainPlayer
+      kind: ConfigMap
+      name: registry-host
+    targets:
+      - fieldPaths:
+          - spec.template.spec.containers.[name=daemon].env.[name=MAIN_PLAYER].value
+        select:
+          kind: Deployment
+          name: m-ai-daemon
