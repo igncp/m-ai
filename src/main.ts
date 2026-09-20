@@ -1,7 +1,6 @@
 import { program } from "commander";
 
 import { runBot } from "./bot";
-import { startDaemon, stopDaemon } from "./daemon";
 import { daemonClient } from "./daemon-client";
 
 // https://github.com/PrismarineJS/mineflayer/blob/master/docs/api.md
@@ -50,6 +49,8 @@ const main = () => {
     .command("start")
     .description("Start the daemon")
     .action(async () => {
+      const { startDaemon } = await import("./daemon");
+
       await startDaemon();
     });
 
@@ -57,6 +58,8 @@ const main = () => {
     .command("stop")
     .description("Stop the daemon")
     .action(async () => {
+      const { stopDaemon } = await import("./daemon");
+
       await stopDaemon();
     });
 

@@ -11,4 +11,6 @@ world.json
 
 k8s/overlays/*
 !k8s/overlays/kustomization.yaml
-!k8s/overlays/*.template
+!k8s/overlays/local.yaml.template
+
+*.tar

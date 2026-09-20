@@ -27,4 +27,6 @@ const worldSchema = z.object({
 
 type World = z.infer<typeof worldSchema>;
 
-export { type World, worldSchema };
+type Farm = World["farms"][number];
+
+export { type Farm, type World, worldSchema };

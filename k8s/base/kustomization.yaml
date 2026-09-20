@@ -5,11 +5,17 @@ resources:
   - daemon.yaml
   - prometheus.yaml
   - grafana.yaml
+  - loki.yaml
   - minecraft.yaml
-  - redis.yaml
+  - postgres.yaml
   - storage.yaml
 
 configMapGenerator:
   - name: grafana-dashboards
+    namespace: observability
     files:
       - grafana-dashboard.json
+      - gameplay-dashboard.json
+  - name: pgadmin-servers
+    files:
+      - pgadmin-servers.json

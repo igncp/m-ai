@@ -20,14 +20,23 @@ spec:
             - daemon
             - start
           env:
-            - name: STORAGE_REDIS_HOST
-              value: redis:6379
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  key: database-url
+                  name: postgres-auth
             - name: MAIN_PLAYER
               value: unset
             - name: M_AI_BOT_RUNNER
               value: kubernetes
             - name: M_AI_IMAGE
               value: registry.invalid/m-ai:latest
+            - name: MINECRAFT_WORLD_ID
+              valueFrom:
+                configMapKeyRef:
+                  key: id
+                  name: minecraft-world
+                  optional: true
             - name: NODE_EXTRA_CA_CERTS
               value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
           image: registry.invalid/m-ai:latest
@@ -68,10 +77,13 @@ subjects:
 apiVersion: v1
 kind: Service
 metadata:
+  labels:
+    app: m-ai-daemon
   name: m-ai-daemon
 spec:
   ports:
     - port: 50000
+      name: metrics
       targetPort: 50000
   selector:
     app: m-ai-daemon

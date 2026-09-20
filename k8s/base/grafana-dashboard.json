@@ -42,6 +42,108 @@
         },
         "overrides": []
       },
+      "title": "Root filesystem usage percentage",
+      "description": "Percentage of the root filesystem in use.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "100 * (1 - node_filesystem_avail_bytes{host!=\"\",mountpoint=\"/\"} / node_filesystem_size_bytes{host!=\"\",mountpoint=\"/\"})",
+          "legendFormat": "{{host}}",
+          "refId": "A",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "type": "gauge",
+      "transparent": false,
+      "repeatDirection": "h",
+      "options": {
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "sizing": "auto",
+        "minVizWidth": 75,
+        "reduceOptions": {
+          "calcs": []
+        },
+        "minVizHeight": 75,
+        "orientation": "auto"
+      },
+      "title": "Root filesystem usage percentage gauge",
+      "description": "Current percentage of the root filesystem in use.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      },
+      "transformations": [
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {
+              "host": false
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "expr": "100 * (1 - node_filesystem_avail_bytes{host!=\"\",mountpoint=\"/\"} / node_filesystem_size_bytes{host!=\"\",mountpoint=\"/\"})",
+          "legendFormat": "{{host}}",
+          "refId": "A",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      }
+    },
+    {
+      "type": "timeseries",
+      "transparent": false,
+      "repeatDirection": "h",
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "asc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "unit": "percent",
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      },
       "title": "Memory usage percentage",
       "description": "Percentage of memory currently in use, based on available memory.",
       "datasource": {
@@ -61,7 +163,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 0
+        "y": 9
       }
     },
     {
@@ -116,7 +218,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 0
+        "y": 9
       }
     },
     {
@@ -180,7 +282,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 9
+        "y": 18
       }
     },
     {
@@ -217,108 +319,6 @@
       "targets": [
         {
           "expr": "100 * (1 - avg by (host) (rate(node_cpu_seconds_total{host!=\"\",mode=\"idle\"}[5m])))",
-          "legendFormat": "{{host}}",
-          "refId": "A",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "gridPos": {
-        "h": 9,
-        "w": 12,
-        "x": 12,
-        "y": 9
-      }
-    },
-    {
-      "type": "timeseries",
-      "transparent": false,
-      "repeatDirection": "h",
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": false,
-          "calcs": []
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "asc"
-        }
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {},
-          "unit": "percent",
-          "min": 0,
-          "max": 100
-        },
-        "overrides": []
-      },
-      "title": "Root filesystem usage percentage",
-      "description": "Percentage of the root filesystem in use.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "targets": [
-        {
-          "expr": "100 * (1 - node_filesystem_avail_bytes{host!=\"\",mountpoint=\"/\"} / node_filesystem_size_bytes{host!=\"\",mountpoint=\"/\"})",
-          "legendFormat": "{{host}}",
-          "refId": "A",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "gridPos": {
-        "h": 9,
-        "w": 12,
-        "x": 0,
-        "y": 18
-      }
-    },
-    {
-      "type": "gauge",
-      "transparent": false,
-      "repeatDirection": "h",
-      "options": {
-        "showThresholdLabels": false,
-        "showThresholdMarkers": true,
-        "sizing": "auto",
-        "minVizWidth": 75,
-        "reduceOptions": {
-          "calcs": []
-        },
-        "minVizHeight": 75,
-        "orientation": "auto"
-      },
-      "title": "Root filesystem usage percentage gauge",
-      "description": "Current percentage of the root filesystem in use.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent",
-          "min": 0,
-          "max": 100
-        },
-        "overrides": []
-      },
-      "transformations": [
-        {
-          "id": "sortBy",
-          "options": {
-            "fields": {
-              "host": false
-            }
-          }
-        }
-      ],
-      "targets": [
-        {
-          "expr": "100 * (1 - node_filesystem_avail_bytes{host!=\"\",mountpoint=\"/\"} / node_filesystem_size_bytes{host!=\"\",mountpoint=\"/\"})",
           "legendFormat": "{{host}}",
           "refId": "A",
           "range": true,
@@ -377,6 +377,220 @@
         "x": 0,
         "y": 27
       }
+    },
+    {
+      "type": "stat",
+      "transparent": false,
+      "repeatDirection": "h",
+      "options": {
+        "graphMode": "none",
+        "colorMode": "value",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "reduceOptions": {
+          "calcs": []
+        },
+        "percentChangeColorMode": "standard",
+        "orientation": "auto"
+      },
+      "title": "Loki logs received, last 24h",
+      "description": "Uncompressed log bytes received by Loki during the last 24 hours.",
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 12,
+        "y": 27
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(loki_distributor_bytes_received_total[24h]))",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "transparent": false,
+      "repeatDirection": "h",
+      "options": {
+        "graphMode": "none",
+        "colorMode": "background_solid",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "reduceOptions": {
+          "calcs": []
+        },
+        "percentChangeColorMode": "standard",
+        "orientation": "auto"
+      },
+      "title": "Docker registry running",
+      "description": "Whether the Docker registry container is running.",
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 15,
+        "y": 27
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "Off"
+                },
+                "1": {
+                  "text": "On"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "docker_registry_running or on() vector(0)",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "transparent": false,
+      "repeatDirection": "h",
+      "options": {
+        "graphMode": "none",
+        "colorMode": "background_solid",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "reduceOptions": {
+          "calcs": []
+        },
+        "percentChangeColorMode": "standard",
+        "orientation": "auto"
+      },
+      "title": "m-ai registry tags",
+      "description": "Number of image tags available in the m-ai Docker registry.",
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 18,
+        "y": 27
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "docker_registry_tag_count{repository=\"m-ai\"} or on() vector(0)",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "transparent": false,
+      "repeatDirection": "h",
+      "options": {
+        "graphMode": "none",
+        "colorMode": "value",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "reduceOptions": {
+          "calcs": []
+        },
+        "percentChangeColorMode": "standard",
+        "orientation": "auto"
+      },
+      "title": "World rows",
+      "description": "Current number of rows in the Postgres World table.",
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 21,
+        "y": 27
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) AS \"World rows\" FROM \"World\"",
+          "refId": "A"
+        }
+      ]
     }
   ]
 }

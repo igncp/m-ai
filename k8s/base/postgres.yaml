@@ -1,0 +1,109 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: postgres
+  name: postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      nodeSelector:
+        m-ai/minecraft-db: "true"
+      containers:
+        - env:
+            - name: POSTGRES_DB
+              value: m_ai
+            - name: POSTGRES_USER
+              value: m_ai
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: postgres-password
+                  name: postgres-auth
+          image: postgres:18.1
+          name: postgres
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - mountPath: /var/lib/postgresql
+              name: data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: postgres
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+spec:
+  ports:
+    - port: 5432
+      targetPort: 5432
+  selector:
+    app: postgres
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: pgadmin
+  name: pgadmin
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pgadmin
+  template:
+    metadata:
+      labels:
+        app: pgadmin
+    spec:
+      initContainers:
+        - name: pgpass
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              printf 'postgres:5432:m_ai:m_ai:%s\n' "$POSTGRES_PASSWORD" > /pgpass/pgpass
+              chmod 600 /pgpass/pgpass
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: postgres-password
+                  name: postgres-auth
+          image: busybox:1.37
+          volumeMounts:
+            - mountPath: /pgpass
+              name: pgpass
+      containers:
+        - env:
+            - name: PGADMIN_DEFAULT_EMAIL
+              value: admin@m-ai.example
+            - name: PGADMIN_DEFAULT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: postgres-password
+                  name: postgres-auth
+          image: dpage/pgadmin4:9.13
+          name: pgadmin
+          volumeMounts:
+            - mountPath: /pgadmin4/servers.json
+              name: servers
+              subPath: pgadmin-servers.json
+            - mountPath: /pgpass
+              name: pgpass
+      volumes:
+        - configMap:
+            name: pgadmin-servers
+          name: servers
+        - emptyDir: {}
+          name: pgpass

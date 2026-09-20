@@ -1,3 +1,35 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: manual
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: Immediate
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-prometheus
+  labels:
+    m-ai/storage: prometheus
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: "/k3s-prometheus"
+    type: DirectoryOrCreate
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: m-ai/observability
+              operator: In
+              values:
+                - "true"
+---
 apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -16,10 +48,50 @@ spec:
     required:
       nodeSelectorTerms:
         - matchExpressions:
-            - key: function
+            - key: m-ai/minecraft-server
               operator: In
               values:
-                - minecraft-server
+                - "true"
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-loki
+  labels:
+    m-ai/observability: "true"
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: "/k3s-loki"
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: m-ai/observability
+              operator: In
+              values:
+                - "true"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: loki
+  namespace: observability
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  selector:
+    matchLabels:
+      m-ai/observability: "true"
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -32,3 +104,41 @@ spec:
   resources:
     requests:
       storage: 20Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  selector:
+    matchLabels:
+      m-ai/minecraft-db: "true"
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-postgres
+  labels:
+    m-ai/minecraft-db: "true"
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/k3s-postgres"
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: m-ai/minecraft-db
+              operator: In
+              values:
+                - "true"

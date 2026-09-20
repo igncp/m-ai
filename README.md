@@ -33,9 +33,75 @@ kubectl port-forward deployment/grafana 3000:3000
 The Prometheus datasource is provisioned automatically from
 `http://prometheus-service.default.svc.cluster.local:9090`.
 
-Set `STORAGE_REDIS_HOST` to use Redis for world storage instead of
-`world.json`. The value can be a host and port, such as
-`redis.example:6379`, or a Redis URL.
+Kubernetes container stdout/stderr logs are collected by Grafana Alloy on every
+ready node and retained in Loki for 30 days. Grafana, Prometheus, Loki, and
+Alloy run in the `observability` namespace. Before applying the manifests,
+label exactly one ready node for the observability workloads and Loki's local
+persistent volume:
+
+```sh
+kubectl label node NODE_NAME m-ai/observability=true
+```
+
+Loki stores data at `/k3s-loki` on that node. Query the provisioned Loki
+datasource in Grafana Explore, for example:
+
+```logql
+{namespace="default", pod=~"m-ai-bot-.*"}
+```
+
+Set `DATABASE_URL` to the PostgreSQL connection URL used for world storage.
+For Kubernetes, create `k8s/overlays/local.yaml` from
+`k8s/overlays/local.yaml.template` and set the PostgreSQL password, connection
+URL, player name, and external node addresses.
+
+Set `image` in `k8s/overlays/local.yaml` to the pushed commit image tag before
+applying the overlay.
+
+The daemon applies pending SQL migrations when it starts.
+
+To update the active world's main player from the applied local Kubernetes
+configuration, run:
+
+```sh
+./scripts/m-ai.sh sync-main-player
+```
+
+### Minecraft world management
+
+Export the world data from the running Minecraft pod to a local archive named
+`minecraft-world-YYYY-MM-DD-HHMMSS.tar`:
+
+```sh
+./scripts/m-ai.sh export-world
+```
+
+Import an archive into the running pod, replacing its current world data:
+
+```sh
+./scripts/m-ai.sh import-world minecraft-world-YYYY-MM-DD-HHMMSS.tar
+```
+
+The world ID is included in each archive. Importing it switches the daemon to
+the matching database data. Archives without an ID receive a new one. New
+worlds receive a new ID automatically.
+
+Clear the world data and restart the Minecraft deployment to generate a new
+world:
+
+```sh
+./scripts/m-ai.sh new-world
+```
+
+Access pgAdmin locally with:
+
+```sh
+kubectl port-forward deployment/pgadmin 8080:80
+```
+
+Sign in at `http://localhost:8080` as `admin@m-ai.example` with the
+`postgres-password` value from `k8s/overlays/local.yaml`. The `m_ai` server is
+preconfigured.
 
 Set `MAIN_PLAYER` to initialize the `mainPlayer` property when a new world is
 created. Existing world data is not changed.
@@ -62,9 +128,16 @@ List tags by their newest platform image creation time:
 ./scripts/m-ai.sh list-image-tags
 ```
 
+Update `k8s/overlays/local.yaml` to use the newest pushed commit image:
+
+```sh
+./scripts/m-ai.sh use-latest-image
+```
+
 The architecture-specific images are pushed with `-amd64` and `-arm64`
-suffixes, and the repository is published with `latest`, the `package.json`
-version, and the short Git commit SHA as multi-platform image indexes. Set `M_AI_REGISTRY_HOST` directly or in `.env` to configure the registry host.
+suffixes, and the full Git commit SHA is published as a multi-platform image
+index. Set `M_AI_REGISTRY_HOST` directly or in `.env` to configure the registry
+host.
 For example:
 
 ```sh

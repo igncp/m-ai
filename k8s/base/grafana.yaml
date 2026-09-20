@@ -2,7 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: grafana-datasources
-  namespace: default
+  namespace: observability
 data:
   prometheus.yaml: |
     apiVersion: 1
@@ -11,15 +11,33 @@ data:
         type: prometheus
         uid: prometheus
         access: proxy
-        url: http://prometheus-service.default.svc.cluster.local:9090
+        url: http://prometheus-service.observability.svc.cluster.local:9090
         isDefault: true
+        editable: false
+      - name: PostgreSQL
+        type: postgres
+        uid: postgres
+        access: proxy
+        url: postgres.default.svc.cluster.local:5432
+        user: m_ai
+        editable: false
+        jsonData:
+          database: m_ai
+          sslmode: disable
+        secureJsonData:
+          password: $__env{POSTGRES_PASSWORD}
+      - name: Loki
+        type: loki
+        uid: loki
+        access: proxy
+        url: http://loki.observability.svc.cluster.local:3100
         editable: false
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: grafana-dashboard-provider
-  namespace: default
+  namespace: observability
 data:
   dashboards.yaml: |
     apiVersion: 1
@@ -33,11 +51,187 @@ data:
         options:
           path: /var/lib/grafana/dashboards
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-alerting
+  namespace: observability
+data:
+  registry.yaml: |
+    apiVersion: 1
+    groups:
+      - orgId: 1
+        name: registry
+        folder: Node filesystem
+        interval: 1m
+        rules:
+          # Temporary rule for verifying Grafana alert provisioning.
+          - uid: test-always-firing
+            title: "TEST: Always firing alert"
+            condition: B
+            for: 0s
+            noDataState: Alerting
+            execErrState: Alerting
+            data:
+              - refId: A
+                datasourceUid: prometheus
+                relativeTimeRange:
+                  from: 600
+                  to: 0
+                model:
+                  expr: vector(1)
+                  instant: true
+                  refId: A
+              - refId: B
+                datasourceUid: __expr__
+                relativeTimeRange:
+                  from: 0
+                  to: 0
+                model:
+                  datasource:
+                    type: __expr__
+                    uid: __expr__
+                  expression: A
+                  type: threshold
+                  refId: B
+                  conditions:
+                    - type: query
+                      evaluator:
+                        type: gt
+                        params: [0]
+                      operator:
+                        type: and
+                      query:
+                        params: [A]
+                      reducer:
+                        type: last
+                        params: []
+          - uid: docker-registry-down
+            title: Docker registry is down
+            condition: B
+            for: 2m
+            noDataState: Alerting
+            execErrState: Alerting
+            data:
+              - refId: A
+                datasourceUid: prometheus
+                relativeTimeRange:
+                  from: 600
+                  to: 0
+                model:
+                  expr: docker_registry_running
+                  instant: true
+                  refId: A
+              - refId: B
+                datasourceUid: __expr__
+                relativeTimeRange:
+                  from: 0
+                  to: 0
+                model:
+                  datasource:
+                    type: __expr__
+                    uid: __expr__
+                  expression: A
+                  type: threshold
+                  refId: B
+                  conditions:
+                    - type: query
+                      evaluator:
+                        type: lt
+                        params: [1]
+                      operator:
+                        type: and
+                      query:
+                        params: [A]
+                      reducer:
+                        type: last
+                        params: []
+          - uid: docker-registry-no-tags
+            title: m-ai Docker registry has no tags
+            condition: B
+            for: 2m
+            noDataState: Alerting
+            execErrState: Alerting
+            data:
+              - refId: A
+                datasourceUid: prometheus
+                relativeTimeRange:
+                  from: 600
+                  to: 0
+                model:
+                  expr: docker_registry_tag_count{repository="m-ai"}
+                  instant: true
+                  refId: A
+              - refId: B
+                datasourceUid: __expr__
+                relativeTimeRange:
+                  from: 0
+                  to: 0
+                model:
+                  datasource:
+                    type: __expr__
+                    uid: __expr__
+                  expression: A
+                  type: threshold
+                  refId: B
+                  conditions:
+                    - type: query
+                      evaluator:
+                        type: lt
+                        params: [1]
+                      operator:
+                        type: and
+                      query:
+                        params: [A]
+                      reducer:
+                        type: last
+                        params: []
+          - uid: root-filesystem-usage-high
+            title: Root filesystem usage is high
+            condition: B
+            for: 5m
+            noDataState: NoData
+            execErrState: Alerting
+            data:
+              - refId: A
+                datasourceUid: prometheus
+                relativeTimeRange:
+                  from: 600
+                  to: 0
+                model:
+                  expr: 100 * (1 - node_filesystem_avail_bytes{host!="",mountpoint="/"} / node_filesystem_size_bytes{host!="",mountpoint="/"})
+                  instant: true
+                  refId: A
+              - refId: B
+                datasourceUid: __expr__
+                relativeTimeRange:
+                  from: 0
+                  to: 0
+                model:
+                  datasource:
+                    type: __expr__
+                    uid: __expr__
+                  expression: A
+                  type: threshold
+                  refId: B
+                  conditions:
+                    - type: query
+                      evaluator:
+                        type: gt
+                        params: [85]
+                      operator:
+                        type: and
+                      query:
+                        params: [A]
+                      reducer:
+                        type: last
+                        params: []
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: grafana
-  namespace: default
+  namespace: observability
   labels:
     app: grafana
 spec:
@@ -50,6 +244,8 @@ spec:
       labels:
         app: grafana
     spec:
+      nodeSelector:
+        m-ai/observability: "true"
       securityContext:
         fsGroup: 472
       containers:
@@ -59,9 +255,14 @@ spec:
             - name: GF_AUTH_ANONYMOUS_ENABLED
               value: "true"
             - name: GF_AUTH_ANONYMOUS_ORG_ROLE
-              value: "Viewer"
+              value: "Editor"
             - name: GF_AUTH_DISABLE_LOGIN_FORM
               value: "true"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: postgres-password
+                  name: postgres-auth
           ports:
             - name: http
               containerPort: 3000
@@ -84,6 +285,9 @@ spec:
             - name: grafana-dashboard-provider
               mountPath: /etc/grafana/provisioning/dashboards
               readOnly: true
+            - name: grafana-alerting
+              mountPath: /etc/grafana/provisioning/alerting
+              readOnly: true
             - name: grafana-dashboards
               mountPath: /var/lib/grafana/dashboards
               readOnly: true
@@ -94,6 +298,9 @@ spec:
         - name: grafana-dashboard-provider
           configMap:
             name: grafana-dashboard-provider
+        - name: grafana-alerting
+          configMap:
+            name: grafana-alerting
         - name: grafana-dashboards
           configMap:
             name: grafana-dashboards

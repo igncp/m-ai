@@ -9,17 +9,26 @@ import { type DaemonContext } from "./base";
 import { BOT_PORT_ENV, botClient, getBotPort } from "./bot-server";
 import { type RoutesParams, daemonClient, dameonRoutes } from "./daemon-client";
 import { createLogger } from "./logger";
-import { createMetricsServer } from "./metrics-server";
-import { ensureWorldFile, getWorld, saveWorld } from "./worlds/file";
+import { type Metric, createMetricsServer } from "./metrics-server";
+import { runMigrations } from "./worlds/database";
+import { ensureWorld, getWorld, saveWorld } from "./worlds/file";
 
 const startDaemon = async () => {
   const logger = createLogger();
 
-  if (await ensureWorldFile()) {
+  await runMigrations();
+
+  const minecraftWorldId = process.env.MINECRAFT_WORLD_ID;
+
+  if (!minecraftWorldId) {
+    logger.warn(
+      "MINECRAFT_WORLD_ID is not configured; create or import a Minecraft world",
+    );
+  } else if (await ensureWorld(minecraftWorldId)) {
     logger.info(
       process.env.MAIN_PLAYER
-        ? "Created server/world.json"
-        : "Created server/world.json; remember to fill in the mainPlayer property",
+        ? "Created world"
+        : "Created world; remember to fill in the mainPlayer property",
     );
   }
 
@@ -179,7 +188,7 @@ const startDaemon = async () => {
               ports: [{ containerPort: getBotPort(index) }],
             },
           ],
-          restartPolicy: "Never",
+          restartPolicy: "OnFailure",
         },
       }),
       method: "POST",
@@ -286,7 +295,10 @@ const startDaemon = async () => {
 
   app.get(dameonRoutes.world, async (_req, res) => {
     try {
-      res.json(await getWorld());
+      if (!minecraftWorldId)
+        throw new Error("MINECRAFT_WORLD_ID is not configured");
+
+      res.json(await getWorld(minecraftWorldId));
     } catch (error) {
       res
         .status(500)
@@ -296,7 +308,10 @@ const startDaemon = async () => {
 
   app.put(dameonRoutes.world, async (req, res) => {
     try {
-      await saveWorld(req.body);
+      if (!minecraftWorldId)
+        throw new Error("MINECRAFT_WORLD_ID is not configured");
+
+      await saveWorld(minecraftWorldId, req.body);
       await notifyBotsToFetchWorld();
 
       res.sendStatus(204);
@@ -366,7 +381,35 @@ const startDaemon = async () => {
       .send(`Bot ${kubernetesBotRunner ? "Pod" : "subprocess"} not running`);
   });
 
-  createMetricsServer(app, context);
+  createMetricsServer(app, async () => {
+    const indexes = kubernetesBotRunner
+      ? (await getBotPods()).items.map(({ metadata }) =>
+          Number(metadata.labels["bot-index"]),
+        )
+      : Object.keys(botProcesses).map(Number);
+
+    const results = await Promise.all(
+      indexes.map(async (index) => {
+        try {
+          const metrics = (await botClient(
+            index,
+            botServiceHost(index),
+          ).getMetrics()) as Metric[];
+
+          return { botName: `minion${index}`, metrics };
+        } catch (error) {
+          logger.warn(`Could not get metrics from minion${index}: ${error}`);
+
+          return null;
+        }
+      }),
+    );
+
+    return results.filter(
+      (result): result is { botName: string; metrics: Metric[] } =>
+        result !== null,
+    );
+  });
 
   const server = app.listen(port, (err: unknown) => {
     if (err) {

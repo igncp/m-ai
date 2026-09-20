@@ -1,0 +1,14 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "m_ai",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "m_ai",
+      "Username": "m_ai",
+      "PassFile": "/pgpass/pgpass",
+      "SSLMode": "prefer"
+    }
+  }
+}

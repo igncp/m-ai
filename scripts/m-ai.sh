@@ -10,9 +10,7 @@ REGISTRY_HOST="${M_AI_REGISTRY_HOST:-localhost:5000}"
 IMAGE_NAME="${M_AI_IMAGE:-$REGISTRY_HOST/m-ai:latest}"
 IMAGE_REPOSITORY="${IMAGE_NAME%:*}"
 IMAGE_TAGS=(
-  latest
-  "$(node -p "require('./package.json').version")"
-  "$(git rev-parse --short=7 HEAD)"
+  "$(git rev-parse HEAD)"
 )
 PLATFORMS=("linux/amd64" "linux/arm64")
 
@@ -69,25 +67,7 @@ build_image() {
       -v "m-ai-bun-cache-$suffix:/root/.bun/install/cache" \
       -v m-ai-nix-cache:/nix \
       nixos/nix:2.32.4 \
-      bash -c \
-      'git config --system --add safe.directory /app
-       cd /app
-       closure_dir="$1"
-      system="$2"
-      system_args=()
-      [[ -n "$system" ]] && system_args+=(--system "$system")
-      nix run .#bun --no-update-lock-file "${system_args[@]}" --option build-users-group "" --extra-experimental-features "nix-command flakes" -- install --frozen-lockfile
-      nix run .#bun --no-update-lock-file "${system_args[@]}" --option build-users-group "" --extra-experimental-features "nix-command flakes" -- node_modules/typescript/bin/tsc --project tsconfig.build.json
-      find /app/node_modules -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-      nix run .#bun --no-update-lock-file "${system_args[@]}" --option build-users-group "" --extra-experimental-features "nix-command flakes" -- install --production --frozen-lockfile
-      nix build .#container-app --no-update-lock-file "${system_args[@]}" --impure --option build-users-group "" --extra-experimental-features "nix-command flakes"
-      rm -rf "$closure_dir" "${closure_dir}-index"
-      mkdir -p "$closure_dir"
-      mapfile -t closure < <(nix-store -qR result/)
-      cp -R "${closure[@]}" "$closure_dir/"
-      chmod -R a+rw "$closure_dir"
-      readlink -f result >"${closure_dir}-index"' \
-      -- "/app/$closure_dir" "$system"
+      bash /app/scripts/build_image.sh "/app/$closure_dir" "$system"
 
     env -u SOURCE_DATE_EPOCH docker buildx build \
       --load \
@@ -100,6 +80,11 @@ build_image() {
 
 deploy_image() {
   local builder_name="${M_AI_BUILDER_NAME:-m-ai-multiarch}"
+
+  if [[ -n "$(git status --porcelain)" ]]; then
+    echo "Refusing to deploy an image from a worktree with uncommitted changes." >&2
+    exit 1
+  fi
 
   if ! docker buildx inspect "$builder_name" >/dev/null 2>&1; then
     echo "Buildx builder '$builder_name' does not exist; run '$0 setup-buildx' after configuring the registry." >&2
@@ -128,24 +113,16 @@ deploy_image() {
 }
 
 list_image_tags() {
-  local builder_name="${M_AI_BUILDER_NAME:-m-ai-multiarch}"
   local registry_url="http://${REGISTRY_HOST}"
   local repository="${IMAGE_REPOSITORY#"${REGISTRY_HOST}/"}"
   local tags
-
-  if ! docker buildx inspect "$builder_name" >/dev/null 2>&1; then
-    echo "Buildx builder '$builder_name' does not exist; run '$0 setup-buildx' after configuring the registry." >&2
-    exit 1
-  fi
+  local -a created_values
 
   tags="$(curl --fail --silent --show-error "${registry_url}/v2/${repository}/tags/list" | jq -r '.tags[]?')"
 
   while IFS= read -r tag; do
     [[ -z "$tag" ]] && continue
-    image="${IMAGE_REPOSITORY}:${tag}"
-    inspect="$(docker buildx imagetools inspect --builder "$builder_name" --format '{{json .}}' "$image")"
-    created="$(jq -r '[.image[]? | objects | .created? | strings] | max // empty' <<<"$inspect")"
-    [[ -z "$created" ]] && continue
+    created_values=()
     manifest="$(curl --fail --silent --show-error \
       --header 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json' \
       "${registry_url}/v2/${repository}/manifests/${tag}")"
@@ -164,10 +141,62 @@ list_image_tags() {
           "${registry_url}/v2/${repository}/manifests/${digest}")"
       fi
       ((size += $(jq '[.config.size, .layers[].size] | add' <<<"$platform_manifest")))
+      config_digest="$(jq -r '.config.digest' <<<"$platform_manifest")"
+      config="$(curl --fail --silent --show-error \
+        "${registry_url}/v2/${repository}/blobs/${config_digest}")"
+      created_values+=("$(jq -r '.created // empty' <<<"$config")")
     done
 
+    created=""
+    while IFS= read -r created_value; do
+      created="$created_value"
+      break
+    done < <(printf '%s\n' "${created_values[@]}" | sort -r)
+    [[ -z "$created" ]] && continue
     printf '%s\t%s\t%s\n' "$created" "$(numfmt --to=iec-i --suffix=B "$size")" "$tag"
   done <<<"$tags" | sort -r
+}
+
+use_latest_image() {
+  local local_config="k8s/overlays/local.yaml"
+  local local_image
+  local local_repository
+  local latest_tag=""
+  local tag
+
+  if [[ ! -f "$local_config" ]]; then
+    echo "Error: local Kubernetes configuration does not exist: $local_config" >&2
+    exit 1
+  fi
+
+  local_image="$(sed -n 's/^  image: //p' "$local_config")"
+  local_repository="${local_image%:*}"
+
+  if [[ -z "$local_image" || "$local_repository" == "$local_image" ]]; then
+    echo "Error: no tagged image found in $local_config" >&2
+    exit 1
+  fi
+
+  REGISTRY_HOST="${local_repository%%/*}"
+  IMAGE_REPOSITORY="$local_repository"
+
+  while IFS=$'\t' read -r _ _ tag; do
+    if [[ "$tag" =~ ^[0-9a-f]{40}$ ]]; then
+      latest_tag="$tag"
+      break
+    fi
+  done < <(list_image_tags)
+
+  if [[ -z "$latest_tag" ]]; then
+    echo "Error: no commit image tags found in $IMAGE_REPOSITORY" >&2
+    exit 1
+  fi
+
+  sed -i \
+    "s|^  image: .*|  image: $IMAGE_REPOSITORY:$latest_tag|" \
+    "$local_config"
+  kubectl apply -k k8s/overlays
+  echo "Set local Kubernetes image to $IMAGE_REPOSITORY:$latest_tag"
 }
 
 setup_buildx() {
@@ -210,6 +239,25 @@ docker_prune() {
   echo "Removed local M-AI Buildx resources and images."
 }
 
+start_registry() {
+  local container_name="local-container-registry"
+
+  if docker container inspect "$container_name" >/dev/null 2>&1; then
+    docker start "$container_name" >/dev/null
+  else
+    docker run --detach \
+      --name "$container_name" \
+      --restart unless-stopped \
+      --publish 5000:5000 \
+      --volume local-container-registry-data:/var/lib/registry \
+      --env REGISTRY_STORAGE_DELETE_ENABLED=true \
+      --env REGISTRY_HTTP_ADDR=0.0.0.0:5000 \
+      registry:3
+  fi
+
+  echo "Container registry is running at localhost:5000."
+}
+
 fix() {
   run_fix_step() {
     local name="$1"
@@ -248,10 +296,6 @@ fix() {
   run_fix_step "TypeScript" ./node_modules/.bin/tsc --noEmit --project .
 
   echo "Fixes completed successfully."
-}
-
-check_ts() {
-  ./node_modules/.bin/tsc --noEmit --project .
 }
 
 generate_grafana() {
@@ -300,12 +344,132 @@ get_commands_history() {
 
   kubectl exec deployment/minecraft --container minecraft -- \
     env "MAIN_PLAYER=$main_player" /bin/bash -c \
-    '(ls -1v logs/*.log.gz | xargs zcat -f; cat logs/latest.log) | grep "$MAIN_PLAYER" | grep "Async Chat Thread"'
+    'for log in logs/*.log.gz; do [[ -e "$log" ]] && zcat -f "$log"; done; cat logs/latest.log' |
+    grep "$main_player" | grep "Async Chat Thread" || true
 }
 
 restart_daemon() {
   kubectl rollout restart deployment/m-ai-daemon
   kubectl rollout status deployment/m-ai-daemon
+}
+
+sync_main_player() {
+  local main_player
+  local world_id
+
+  main_player="$(kubectl get configmap m-ai-local-config --output=jsonpath='{.data.mainPlayer}')"
+  world_id="$(kubectl get configmap minecraft-world --output=jsonpath='{.data.id}')"
+
+  if [[ -z "$main_player" ]]; then
+    echo "Error: mainPlayer is not set in ConfigMap m-ai-local-config" >&2
+    exit 1
+  fi
+
+  if [[ -z "$world_id" ]]; then
+    echo "Error: world ID is not set in ConfigMap minecraft-world" >&2
+    exit 1
+  fi
+
+  if [[ ! "$main_player" =~ ^[A-Za-z0-9_]{3,16}$ ]]; then
+    echo "Error: mainPlayer is not a valid Minecraft username: $main_player" >&2
+    exit 1
+  fi
+
+  if [[ ! "$world_id" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
+    echo "Error: invalid Minecraft world ID: $world_id" >&2
+    exit 1
+  fi
+
+  kubectl exec deployment/postgres -- \
+    psql --set=ON_ERROR_STOP=1 --username=m_ai --dbname=m_ai \
+    --command "UPDATE \"World\" SET \"mainPlayer\" = '$main_player' WHERE \"minecraftWorldId\" = '$world_id' RETURNING \"mainPlayer\";"
+}
+
+daemon() {
+  kubectl exec deployment/m-ai-daemon --container daemon -- \
+    /app/result/bin/m-ai "$@"
+}
+
+set_world_id() {
+  local world_id="$1"
+
+  kubectl create configmap minecraft-world \
+    --from-literal="id=$world_id" \
+    --dry-run=client \
+    --output=yaml | kubectl apply --filename=-
+}
+
+export_world() {
+  local archive="minecraft-world-$(date +%F-%H%M%S).tar"
+  local temporary_archive="${archive}.partial"
+
+  if [[ -e "$archive" || -e "$temporary_archive" ]]; then
+    echo "Error: export archive already exists: $archive" >&2
+    exit 1
+  fi
+
+  if ! kubectl exec deployment/minecraft --container minecraft -- \
+    tar -C /data -cf - . >"$temporary_archive"; then
+    rm -- "$temporary_archive"
+    exit 1
+  fi
+
+  mv -- "$temporary_archive" "$archive"
+  echo "Exported Minecraft world to $archive"
+}
+
+import_world() {
+  local archive="${1:-}"
+  local world_id
+
+  if [[ -z "$archive" ]]; then
+    echo "Usage: $0 import-world <tar-file>" >&2
+    exit 1
+  fi
+
+  if [[ ! -f "$archive" ]]; then
+    echo "Error: archive does not exist: $archive" >&2
+    exit 1
+  fi
+
+  if ! tar -tf "$archive" >/dev/null; then
+    echo "Error: invalid or incomplete archive: $archive" >&2
+    exit 1
+  fi
+
+  if ! world_id="$(tar -xOf "$archive" ./.m-ai-world-id 2>/dev/null)"; then
+    world_id="$(uuidgen)"
+  fi
+
+  if [[ ! "$world_id" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
+    echo "Error: archive contains an invalid Minecraft world ID" >&2
+    exit 1
+  fi
+
+  kubectl exec deployment/minecraft --container minecraft -- \
+    sh -c 'find /data -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +'
+  kubectl exec --stdin deployment/minecraft --container minecraft -- \
+    tar -C /data -xf - <"$archive"
+  kubectl exec deployment/minecraft --container minecraft -- \
+    sh -c "printf '%s\\n' '$world_id' > /data/.m-ai-world-id"
+  set_world_id "$world_id"
+  restart_daemon
+  echo "Imported Minecraft world from $archive"
+}
+
+new_world() {
+  local world_id
+
+  kubectl exec deployment/minecraft --container minecraft -- \
+    sh -c 'find /data -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +'
+  world_id="$(uuidgen)"
+  kubectl exec deployment/minecraft --container minecraft -- \
+    sh -c "printf '%s\\n' '$world_id' > /data/.m-ai-world-id"
+  set_world_id "$world_id"
+  kubectl rollout restart deployment/minecraft
+  kubectl rollout status deployment/minecraft
+  restart_daemon
+  echo "Created Minecraft world with ID: $world_id"
 }
 
 case "${1:-}" in
@@ -318,6 +482,9 @@ deploy-image)
 list-image-tags)
   list_image_tags
   ;;
+use-latest-image)
+  use_latest_image
+  ;;
 build-deploy-image)
   build_image
   deploy_image
@@ -328,17 +495,32 @@ setup-buildx)
 docker-prune)
   docker_prune
   ;;
+start-registry)
+  start_registry
+  ;;
 get-commands-history)
   get_commands_history
   ;;
 restart-daemon)
   restart_daemon
   ;;
+sync-main-player)
+  sync_main_player
+  ;;
+d)
+  daemon "${@:2}"
+  ;;
+export-world)
+  export_world
+  ;;
+import-world)
+  import_world "${2:-}"
+  ;;
+new-world)
+  new_world
+  ;;
 fix)
   fix
-  ;;
-check-ts)
-  check_ts
   ;;
 generate-grafana)
   generate_grafana
@@ -351,19 +533,25 @@ kube-setup)
   ;;
 *)
   cat >&2 <<EOF
-Usage: $0 <command>
+Usage: $0 <command> [arguments]
 
 Commands:
   build-image           Build multi-architecture M-AI images.
   deploy-image          Push built images and create multi-architecture tags.
   list-image-tags       List registry image tags by creation time and size.
+  use-latest-image      Set the local Kubernetes image to the newest commit tag.
   build-deploy-image    Build and deploy images.
   setup-buildx          Create the M-AI multi-architecture Buildx builder.
   docker-prune          Remove local M-AI Buildx resources and images.
+  start-registry        Start the local container registry.
   get-commands-history  Print the main player's Minecraft chat commands.
   restart-daemon        Roll out the daemon and pull its latest image.
+  sync-main-player      Update the active world's player from Kubernetes config.
+  d <arguments...>      Run an M-AI CLI command in the daemon pod.
+  export-world          Export the Minecraft world to a dated local tar file.
+  import-world <file>   Replace the Minecraft world with a local tar file.
+  new-world             Clear the Minecraft world and restart its deployment.
   fix                   Format and validate the project.
-  check-ts              Type-check the project.
   generate-grafana      Generate the Grafana dashboard JSON.
   setup                 Set up the Mindcraft development environment.
   kube-setup            Configure kubectl and install Prometheus Operator.

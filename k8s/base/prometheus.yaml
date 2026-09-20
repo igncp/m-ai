@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: prometheus-operator
-  namespace: default
+  namespace: observability
   labels:
     k8s-app: prometheus-operator
 spec:
@@ -15,6 +15,8 @@ spec:
       labels:
         k8s-app: prometheus-operator
     spec:
+      nodeSelector:
+        m-ai/observability: "true"
       serviceAccountName: prometheus-operator
       containers:
         - name: prometheus-operator
@@ -30,7 +32,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: prometheus-operator
-  namespace: default
+  namespace: observability
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -54,8 +56,22 @@ rules:
     verbs: ["create"]
   - apiGroups: [""]
     resources:
-      ["nodes", "services", "endpoints", "pods", "secrets", "configmaps"]
+      [
+        "nodes",
+        "namespaces",
+        "services",
+        "endpoints",
+        "pods",
+        "secrets",
+        "configmaps",
+      ]
     verbs: ["*"]
+  - apiGroups: ["events.k8s.io"]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -68,13 +84,13 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: prometheus-operator
-    namespace: default
+    namespace: observability
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: prometheus-k8s
-  namespace: default
+  namespace: observability
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -104,18 +120,51 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: prometheus-k8s
-    namespace: default
+    namespace: observability
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: Prometheus
 metadata:
   name: prometheus
-  namespace: default
+  namespace: observability
 spec:
   retention: 15d
+  retentionSize: 8GB
   serviceAccountName: prometheus-k8s
   replicas: 1
   image: quay.io/prometheus/prometheus:v3.14.0
+  nodeSelector:
+    m-ai/observability: "true"
+  securityContext:
+    fsGroup: 65534
+    fsGroupChangePolicy: OnRootMismatch
+  initContainers:
+    - name: initialize-storage
+      image: busybox:1.37
+      command:
+        - sh
+        - -ec
+        - mkdir -p /storage/prometheus-db && chown 65534:65534 /storage/prometheus-db
+      securityContext:
+        runAsUser: 0
+      volumeMounts:
+        - name: prometheus-prometheus-db
+          mountPath: /storage
+  storage:
+    volumeClaimTemplate:
+      metadata:
+        labels:
+          m-ai/storage: prometheus
+      spec:
+        storageClassName: manual
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi
+        selector:
+          matchLabels:
+            m-ai/storage: prometheus
   serviceMonitorNamespaceSelector: {}
   serviceMonitorSelector:
     matchLabels:
@@ -128,7 +177,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: prometheus-service
-  namespace: default
+  namespace: observability
 spec:
   type: ClusterIP
   ports:
@@ -141,11 +190,51 @@ spec:
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: external-node-exporter-monitor
-  namespace: default
+  name: loki-monitor
+  namespace: observability
   labels:
     release: prometheus-stack
 spec:
+  selector:
+    matchLabels:
+      app: loki
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: m-ai-daemon-monitor
+  namespace: observability
+  labels:
+    release: prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames:
+      - default
+  selector:
+    matchLabels:
+      app: m-ai-daemon
+  endpoints:
+    - port: metrics
+      path: /prometheus/metrics
+      interval: 15s
+      scrapeTimeout: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: external-node-exporter-monitor
+  namespace: observability
+  labels:
+    release: prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames:
+      - default
   serviceDiscoveryRole: EndpointSlice
   selector:
     matchLabels:

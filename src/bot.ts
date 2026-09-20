@@ -13,6 +13,7 @@ import {
 } from "./base";
 import { botServerRoutes, getBotServerPort } from "./bot-server";
 import { daemonClient } from "./daemon-client";
+import { createBotMetricsServer } from "./metrics-server";
 import { asyncReducer } from "./reducer";
 import { getDefaultMovements } from "./utils";
 
@@ -62,12 +63,15 @@ const runBot = async (opts: {
   };
 
   const eventsQueue: UpdateEvent[] = [];
+  const stateRef: { state: BotState } = { state: firstState };
   const app = express();
 
   app.post(botServerRoutes.fetchWorld, (_req, res) => {
     eventsQueue.push({ type: "fetch-world" });
     res.sendStatus(204);
   });
+
+  createBotMetricsServer(app, () => stateRef.state);
 
   const botServer = app.listen(getBotServerPort());
 
@@ -197,10 +201,6 @@ const runBot = async (opts: {
       type: "end",
     });
   });
-
-  const stateRef: { state: BotState } = {
-    state: firstState,
-  };
 
   bot.on("spawn", () => {
     const defaultMovement = getDefaultMovements(firstState);

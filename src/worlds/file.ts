@@ -1,20 +1,17 @@
-import fs from "fs/promises";
-import path from "path";
-import { createClient } from "redis";
+import { pool } from "./database";
+import { type Farm, type World, worldSchema } from "./types";
 
-import { type World, worldSchema } from "./types";
+type FarmRow = {
+  chestX: number;
+  chestY: number;
+  chestZ: number;
+  trees: Farm["trees"];
+  wheat: Farm["wheat"];
+};
 
-const worldFilePath = path.resolve(__dirname, "..", "..", "world.json");
-const worldRedisKey = "m-ai:world";
-const redisHost = process.env.STORAGE_REDIS_HOST;
+type Point3DRow = { x: number; y: number; z: number };
 
-const redisClient = redisHost
-  ? createClient({
-      url: redisHost.includes("://") ? redisHost : `redis://${redisHost}`,
-    })
-  : null;
-
-let redisConnection: Promise<unknown> | undefined;
+type WorldRow = { id: number; mainPlayer: null | string };
 
 const createEmptyWorld = (): World => ({
   diggingChests: [],
@@ -22,77 +19,105 @@ const createEmptyWorld = (): World => ({
   mainPlayer: process.env.MAIN_PLAYER || undefined,
 });
 
-const getRedisClient = async () => {
-  if (!redisClient) throw new Error("Redis storage is not configured");
+const getWorld = async (minecraftWorldId: string): Promise<null | World> => {
+  const world = await pool.query<WorldRow>(
+    'SELECT "id", "mainPlayer" FROM "World" WHERE "minecraftWorldId" = $1',
+    [minecraftWorldId],
+  );
 
-  if (!redisConnection) {
-    redisConnection = redisClient.connect().catch((error: unknown) => {
-      redisConnection = undefined;
-      throw error;
-    });
-  }
+  if (!world.rowCount) return null;
 
-  await redisConnection;
+  const worldId = world.rows[0].id;
 
-  return redisClient;
+  const [diggingChests, farms] = await Promise.all([
+    pool.query<Point3DRow>(
+      'SELECT "x", "y", "z" FROM "DiggingChest" WHERE "worldId" = $1 ORDER BY "position"',
+      [worldId],
+    ),
+    pool.query<FarmRow>(
+      'SELECT "chestX", "chestY", "chestZ", "trees", "wheat" FROM "Farm" WHERE "worldId" = $1 ORDER BY "position"',
+      [worldId],
+    ),
+  ]);
+
+  return worldSchema.parse({
+    diggingChests: diggingChests.rows.map(({ x, y, z }) => [x, y, z]),
+    farms: farms.rows.map(({ chestX, chestY, chestZ, trees, wheat }) => ({
+      chest: [chestX, chestY, chestZ],
+      trees,
+      wheat,
+    })),
+    mainPlayer: world.rows[0].mainPlayer || undefined,
+  });
 };
 
-const getWorld = async (): Promise<null | World> => {
-  if (redisClient) {
-    const value = await (await getRedisClient()).get(worldRedisKey);
-
-    return value === null ? null : worldSchema.parse(JSON.parse(value));
-  }
-
-  try {
-    const parsed: unknown = JSON.parse(
-      await fs.readFile(worldFilePath, "utf8"),
-    );
-
-    return worldSchema.parse(parsed);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-
-    throw error;
-  }
-};
-
-const saveWorld = async (world: World): Promise<void> => {
+const saveWorld = async (
+  minecraftWorldId: string,
+  world: World,
+): Promise<void> => {
   worldSchema.parse(world);
 
-  if (redisClient) {
-    await (await getRedisClient()).set(worldRedisKey, JSON.stringify(world));
-
-    return;
-  }
-
-  await fs.writeFile(worldFilePath, JSON.stringify(world, null, 2));
-};
-
-const ensureWorldFile = async (): Promise<boolean> => {
-  if (redisClient) {
-    const result = await (
-      await getRedisClient()
-    ).set(worldRedisKey, JSON.stringify(createEmptyWorld()), { NX: true });
-
-    return result === "OK";
-  }
+  const client = await pool.connect();
 
   try {
-    const handle = await fs.open(worldFilePath, "wx");
+    await client.query("BEGIN");
 
-    try {
-      await handle.writeFile(JSON.stringify(createEmptyWorld(), null, 2));
-    } finally {
-      await handle.close();
+    const result = await client.query<WorldRow>(
+      'INSERT INTO "World" ("minecraftWorldId", "mainPlayer") VALUES ($1, $2) ON CONFLICT ("minecraftWorldId") DO UPDATE SET "mainPlayer" = EXCLUDED."mainPlayer" RETURNING "id", "mainPlayer"',
+      [minecraftWorldId, world.mainPlayer || null],
+    );
+
+    const worldId = result.rows[0].id;
+
+    await client.query('DELETE FROM "DiggingChest" WHERE "worldId" = $1', [
+      worldId,
+    ]);
+
+    await client.query('DELETE FROM "Farm" WHERE "worldId" = $1', [worldId]);
+
+    for (const [position, [x, y, z]] of world.diggingChests.entries()) {
+      await client.query(
+        'INSERT INTO "DiggingChest" ("worldId", "position", "x", "y", "z") VALUES ($1, $2, $3, $4, $5)',
+        [worldId, position, x, y, z],
+      );
     }
 
-    return true;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
+    for (const [position, { chest, trees, wheat }] of world.farms.entries()) {
+      await client.query(
+        'INSERT INTO "Farm" ("worldId", "position", "chestX", "chestY", "chestZ", "trees", "wheat") VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        [
+          worldId,
+          position,
+          ...chest,
+          JSON.stringify(trees),
+          JSON.stringify(wheat),
+        ],
+      );
+    }
 
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
     throw error;
+  } finally {
+    client.release();
   }
 };
 
-export { ensureWorldFile, getWorld, saveWorld };
+const ensureWorld = async (minecraftWorldId: string): Promise<boolean> => {
+  const legacyWorld = await pool.query(
+    'UPDATE "World" SET "minecraftWorldId" = $1 WHERE "id" = 1 AND "minecraftWorldId" IS NULL',
+    [minecraftWorldId],
+  );
+
+  if (legacyWorld.rowCount) return true;
+
+  const result = await pool.query(
+    'INSERT INTO "World" ("minecraftWorldId", "mainPlayer") VALUES ($1, $2) ON CONFLICT ("minecraftWorldId") DO NOTHING',
+    [minecraftWorldId, createEmptyWorld().mainPlayer || null],
+  );
+
+  return result.rowCount === 1;
+};
+
+export { ensureWorld, getWorld, saveWorld };

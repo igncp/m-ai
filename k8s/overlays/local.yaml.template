@@ -1,3 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: m-ai-local-config
+data:
+  image: registry.example/m-ai:commit-sha
+  mainPlayer: player-name
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-auth
+stringData:
+  postgres-password: change-me
+  database-url: postgresql://m_ai:change-me@postgres:5432/m_ai?schema=public
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-auth
+  namespace: observability
+stringData:
+  postgres-password: change-me
+---
 apiVersion: discovery.k8s.io/v1
 kind: EndpointSlice
 metadata:
@@ -12,11 +36,9 @@ ports:
     port: 9100
     protocol: TCP
 endpoints:
-  - addresses:
-      - "192.168.X.X"
+  - addresses: ["192.168.X.X"]
     hostname: host-a
-    conditions:
-      ready: true
+    conditions: { ready: true }
 ---
 apiVersion: discovery.k8s.io/v1
 kind: EndpointSlice
@@ -32,31 +54,9 @@ ports:
     port: 9200
     protocol: TCP
 endpoints:
-  - addresses:
-      - "192.168.X.X"
+  - addresses: ["192.168.X.X"]
     hostname: host-a
-    conditions:
-      ready: true
----
-apiVersion: discovery.k8s.io/v1
-kind: EndpointSlice
-metadata:
-  name: external-node-exporter-slice-9400
-  namespace: default
-  labels:
-    kubernetes.io/service-name: external-node-exporter
-    k8s-app: node-exporter
-addressType: IPv4
-ports:
-  - name: metrics-9400
-    port: 9400
-    protocol: TCP
-endpoints:
-  - addresses:
-      - "192.168.X.X"
-    hostname: host-a
-    conditions:
-      ready: true
+    conditions: { ready: true }
 ---
 apiVersion: discovery.k8s.io/v1
 kind: EndpointSlice
@@ -72,8 +72,24 @@ ports:
     port: 9300
     protocol: TCP
 endpoints:
-  - addresses:
-      - "192.168.X.X"
+  - addresses: ["192.168.X.X"]
     hostname: host-a
-    conditions:
-      ready: true
+    conditions: { ready: true }
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: external-node-exporter-slice-9400
+  namespace: default
+  labels:
+    kubernetes.io/service-name: external-node-exporter
+    k8s-app: node-exporter
+addressType: IPv4
+ports:
+  - name: metrics-9400
+    port: 9400
+    protocol: TCP
+endpoints:
+  - addresses: ["192.168.X.X"]
+    hostname: host-a
+    conditions: { ready: true }

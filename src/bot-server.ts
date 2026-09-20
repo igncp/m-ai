@@ -4,6 +4,7 @@ const MAX_BOT_INDEX = 10;
 
 const botServerRoutes = {
   fetchWorld: "/fetch-world",
+  metrics: "/metrics",
 };
 
 const getBotServerPort = (): number => {
@@ -40,7 +41,10 @@ const botClient = (index: number, host = "localhost") => {
   const notifyFetchWorld = () =>
     fetchBot(botServerRoutes.fetchWorld, { method: "POST" });
 
-  return { notifyFetchWorld };
+  const getMetrics = async () =>
+    (await fetchBot(botServerRoutes.metrics)).json();
+
+  return { getMetrics, notifyFetchWorld };
 };
 
 export {

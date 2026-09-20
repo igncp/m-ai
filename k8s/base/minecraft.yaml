@@ -57,13 +57,13 @@ spec:
         app: minecraft
     spec:
       nodeSelector:
-        function: minecraft-server
+        m-ai/minecraft-server: "true"
       initContainers:
         - command:
             - sh
             - -c
             - cp /config/bukkit.yml /data/bukkit.yml
-          image: itzg/minecraft-server:latest
+          image: itzg/minecraft-server@sha256:769a826c340586e9d483a0eb6437b8e2c3611aea6a115ff072a2fe372d43e2be
           name: install-bukkit-config
           volumeMounts:
             - mountPath: /data
@@ -83,7 +83,7 @@ spec:
               value: "80"
             - name: TYPE
               value: PAPER
-          image: itzg/minecraft-server:latest
+          image: itzg/minecraft-server@sha256:769a826c340586e9d483a0eb6437b8e2c3611aea6a115ff072a2fe372d43e2be
           name: minecraft
           ports:
             - containerPort: 80
