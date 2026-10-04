@@ -150,24 +150,36 @@ for each architecture under `build/node_modules-amd64` and
 `build/node_modules-arm64`. Docker must have arm64 emulation enabled when
 these commands run on an amd64 host.
 
-For an HTTP registry, configure BuildKit declaratively on NixOS:
+For an HTTP registry, configure BuildKit and the M-AI Buildx builder
+declaratively on the NixOS host that runs image builds:
 
 ```nix
-environment.etc."buildkitd.toml".text = ''
-  [registry."192.168.1.50:5000"]
-    http = true
-    insecure = true
-'';
+{
+  environment.etc."buildkitd.toml".text = ''
+    [registry."192.168.1.50:5000"]
+      http = true
+      insecure = true
+  '';
+
+  services.m-ai.dockerImageBuilder = {
+    enable = true;
+    user = "igncp";
+    home = "/home/igncp";
+  };
+}
 ```
 
-Apply the NixOS configuration, then create the builder with:
+The builder is configured in the Docker client state of `user`, so it must be
+the same user that runs `m-ai.sh`. Apply the NixOS configuration before
+building. Confirm the service and builder with:
 
 ```sh
-./scripts/m-ai.sh setup-buildx
+systemctl status m-ai-buildx.service
+docker buildx inspect m-ai-multiarch
 ```
 
-The script reads `/etc/buildkitd.toml`. Set `M_AI_BUILDKIT_CONFIG` if the
-configuration is stored elsewhere.
+`buildkitdConfig` defaults to `/etc/buildkitd.toml`. Set it in the NixOS
+configuration when the configuration is stored elsewhere.
 
 The dashboard in `k8s/base/grafana-dashboard.json` is generated with the
 Grafana Foundation SDK. Regenerate it after changing

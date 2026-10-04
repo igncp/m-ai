@@ -20,14 +20,18 @@ data:
         kvstore:
           store: inmemory
       storage:
-        filesystem:
-          chunks_directory: /loki/chunks
-          rules_directory: /loki/rules
+        s3:
+          endpoint: ${LOKI_S3_ENDPOINT}
+          bucketnames: loki
+          access_key_id: ${LOKI_S3_ACCESS_KEY_ID}
+          secret_access_key: ${LOKI_S3_SECRET_ACCESS_KEY}
+          region: us-east-1
+          s3forcepathstyle: true
     schema_config:
       configs:
         - from: "2024-01-01"
           store: tsdb
-          object_store: filesystem
+          object_store: s3
           schema: v13
           index:
             prefix: index_
@@ -38,7 +42,7 @@ data:
     compactor:
       working_directory: /loki/retention
       retention_enabled: true
-      delete_request_store: filesystem
+      delete_request_store: s3
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -67,7 +71,7 @@ spec:
           command:
             - sh
             - -ec
-            - mkdir -p /loki/chunks /loki/index /loki/rules /loki/retention && chown -R 10001:10001 /loki
+            - mkdir -p /loki/retention && chown -R 10001:10001 /loki
           securityContext:
             runAsUser: 0
           volumeMounts:
@@ -78,6 +82,23 @@ spec:
           image: grafana/loki:3.4.2
           args:
             - -config.file=/etc/loki/config/config.yaml
+            - -config.expand-env=true
+          env:
+            - name: LOKI_S3_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: loki-s3
+                  key: endpoint
+            - name: LOKI_S3_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: loki-s3
+                  key: access-key-id
+            - name: LOKI_S3_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: loki-s3
+                  key: secret-access-key
           ports:
             - name: http
               containerPort: 3100
@@ -115,10 +136,12 @@ metadata:
   labels:
     app: loki
 spec:
+  type: NodePort
   ports:
     - name: http
       port: 3100
       targetPort: http
+      nodePort: 31000
   selector:
     app: loki
 ---

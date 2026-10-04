@@ -128,43 +128,24 @@ metadata:
   name: prometheus
   namespace: observability
 spec:
-  retention: 15d
-  retentionSize: 8GB
+  # The active TSDB/WAL uses the pod's ephemeral storage. Compacted blocks are
+  # uploaded to MinIO by the Thanos sidecar.
+  retention: 24h
   serviceAccountName: prometheus-k8s
   replicas: 1
   image: quay.io/prometheus/prometheus:v3.14.0
+  externalLabels:
+    cluster: m-ai
   nodeSelector:
     m-ai/observability: "true"
   securityContext:
     fsGroup: 65534
     fsGroupChangePolicy: OnRootMismatch
-  initContainers:
-    - name: initialize-storage
-      image: busybox:1.37
-      command:
-        - sh
-        - -ec
-        - mkdir -p /storage/prometheus-db && chown 65534:65534 /storage/prometheus-db
-      securityContext:
-        runAsUser: 0
-      volumeMounts:
-        - name: prometheus-prometheus-db
-          mountPath: /storage
-  storage:
-    volumeClaimTemplate:
-      metadata:
-        labels:
-          m-ai/storage: prometheus
-      spec:
-        storageClassName: manual
-        accessModes:
-          - ReadWriteOnce
-        resources:
-          requests:
-            storage: 10Gi
-        selector:
-          matchLabels:
-            m-ai/storage: prometheus
+  thanos:
+    image: quay.io/thanos/thanos:v0.39.2
+    objectStorageConfig:
+      name: thanos-objstore
+      key: objstore.yml
   serviceMonitorNamespaceSelector: {}
   serviceMonitorSelector:
     matchLabels:
@@ -186,6 +167,158 @@ spec:
       targetPort: 9090
   selector:
     prometheus: prometheus
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: thanos-sidecar
+  namespace: observability
+spec:
+  ports:
+    - name: grpc
+      port: 10901
+      targetPort: grpc
+  selector:
+    prometheus: prometheus
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: thanos-store
+  namespace: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: thanos-store
+  template:
+    metadata:
+      labels:
+        app: thanos-store
+    spec:
+      nodeSelector:
+        m-ai/observability: "true"
+      containers:
+        - name: thanos-store
+          image: quay.io/thanos/thanos:v0.39.2
+          args:
+            - store
+            - --http-address=0.0.0.0:10902
+            - --grpc-address=0.0.0.0:10901
+            - --data-dir=/var/thanos/store
+            - --objstore.config-file=/etc/thanos/objstore.yml
+          ports:
+            - name: grpc
+              containerPort: 10901
+            - name: http
+              containerPort: 10902
+          volumeMounts:
+            - name: objstore
+              mountPath: /etc/thanos
+              readOnly: true
+            - name: data
+              mountPath: /var/thanos/store
+      volumes:
+        - name: objstore
+          secret:
+            secretName: thanos-objstore
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: thanos-store
+  namespace: observability
+spec:
+  ports:
+    - name: grpc
+      port: 10901
+      targetPort: grpc
+  selector:
+    app: thanos-store
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: thanos-compactor
+  namespace: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: thanos-compactor
+  template:
+    metadata:
+      labels:
+        app: thanos-compactor
+    spec:
+      nodeSelector:
+        m-ai/observability: "true"
+      containers:
+        - name: thanos-compactor
+          image: quay.io/thanos/thanos:v0.39.2
+          args:
+            - compact
+            - --data-dir=/var/thanos/compact
+            - --objstore.config-file=/etc/thanos/objstore.yml
+            - --retention.resolution-raw=15d
+            - --wait
+          volumeMounts:
+            - name: objstore
+              mountPath: /etc/thanos
+              readOnly: true
+            - name: data
+              mountPath: /var/thanos/compact
+      volumes:
+        - name: objstore
+          secret:
+            secretName: thanos-objstore
+        - name: data
+          emptyDir: {}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: thanos-query
+  namespace: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: thanos-query
+  template:
+    metadata:
+      labels:
+        app: thanos-query
+    spec:
+      nodeSelector:
+        m-ai/observability: "true"
+      containers:
+        - name: thanos-query
+          image: quay.io/thanos/thanos:v0.39.2
+          args:
+            - query
+            - --http-address=0.0.0.0:10902
+            - --grpc-address=0.0.0.0:10901
+            - --endpoint=thanos-sidecar.observability.svc.cluster.local:10901
+            - --endpoint=thanos-store.observability.svc.cluster.local:10901
+          ports:
+            - name: http
+              containerPort: 10902
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: thanos-query
+  namespace: observability
+spec:
+  ports:
+    - name: http
+      port: 10902
+      targetPort: http
+  selector:
+    app: thanos-query
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
@@ -262,6 +395,20 @@ spec:
             - __meta_kubernetes_endpointslice_endpoint_hostname
           targetLabel: host
     - port: metrics-9400
+      interval: 15s
+      scrapeTimeout: 10s
+      relabelings:
+        - sourceLabels:
+            - __meta_kubernetes_endpointslice_endpoint_hostname
+          targetLabel: host
+    - port: metrics-9500
+      interval: 15s
+      scrapeTimeout: 10s
+      relabelings:
+        - sourceLabels:
+            - __meta_kubernetes_endpointslice_endpoint_hostname
+          targetLabel: host
+    - port: metrics-9600
       interval: 15s
       scrapeTimeout: 10s
       relabelings:

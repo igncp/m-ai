@@ -87,7 +87,7 @@ deploy_image() {
   fi
 
   if ! docker buildx inspect "$builder_name" >/dev/null 2>&1; then
-    echo "Buildx builder '$builder_name' does not exist; run '$0 setup-buildx' after configuring the registry." >&2
+    echo "Buildx builder '$builder_name' does not exist; enable services.m-ai.dockerImageBuilder in NixOS." >&2
     exit 1
   fi
 
@@ -199,26 +199,6 @@ use_latest_image() {
   echo "Set local Kubernetes image to $IMAGE_REPOSITORY:$latest_tag"
 }
 
-setup_buildx() {
-  builder_name="${M_AI_BUILDER_NAME:-m-ai-multiarch}"
-  buildkit_config="${M_AI_BUILDKIT_CONFIG:-/etc/buildkitd.toml}"
-
-  docker buildx rm --force "$builder_name" 2>/dev/null || true
-
-  if [[ ! -f "$buildkit_config" ]]; then
-    echo "BuildKit config does not exist: $buildkit_config" >&2
-    exit 1
-  fi
-
-  docker buildx create \
-    --name "$builder_name" \
-    --driver docker-container \
-    --buildkitd-config "$buildkit_config" \
-    --use
-  docker buildx inspect --bootstrap
-  echo "Buildx builder '$builder_name' created successfully."
-}
-
 docker_prune() {
   builder_name="${M_AI_BUILDER_NAME:-m-ai-multiarch}"
   mapfile -t images < <(
@@ -237,25 +217,6 @@ docker_prune() {
   fi
 
   echo "Removed local M-AI Buildx resources and images."
-}
-
-start_registry() {
-  local container_name="local-container-registry"
-
-  if docker container inspect "$container_name" >/dev/null 2>&1; then
-    docker start "$container_name" >/dev/null
-  else
-    docker run --detach \
-      --name "$container_name" \
-      --restart unless-stopped \
-      --publish 5000:5000 \
-      --volume local-container-registry-data:/var/lib/registry \
-      --env REGISTRY_STORAGE_DELETE_ENABLED=true \
-      --env REGISTRY_HTTP_ADDR=0.0.0.0:5000 \
-      registry:3
-  fi
-
-  echo "Container registry is running at localhost:5000."
 }
 
 fix() {
@@ -489,14 +450,8 @@ build-deploy-image)
   build_image
   deploy_image
   ;;
-setup-buildx)
-  setup_buildx
-  ;;
 docker-prune)
   docker_prune
-  ;;
-start-registry)
-  start_registry
   ;;
 get-commands-history)
   get_commands_history
@@ -541,9 +496,7 @@ Commands:
   list-image-tags       List registry image tags by creation time and size.
   use-latest-image      Set the local Kubernetes image to the newest commit tag.
   build-deploy-image    Build and deploy images.
-  setup-buildx          Create the M-AI multi-architecture Buildx builder.
   docker-prune          Remove local M-AI Buildx resources and images.
-  start-registry        Start the local container registry.
   get-commands-history  Print the main player's Minecraft chat commands.
   restart-daemon        Roll out the daemon and pull its latest image.
   sync-main-player      Update the active world's player from Kubernetes config.

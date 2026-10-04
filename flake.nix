@@ -8,7 +8,7 @@
     unstable,
     flake-utils,
   }:
-    flake-utils.lib.eachDefaultSystem (system: let
+    (flake-utils.lib.eachDefaultSystem (system: let
       pkgs = import unstable {
         inherit system;
         config = {allowUnfree = true;};
@@ -81,5 +81,14 @@
           util-linux
         ];
       };
-    });
+    }))
+    // {
+      nixosModules = {
+        default = import ./nix/server-node.nix;
+        serverNode = import ./nix/server-node.nix;
+        k3sWorkerNode = import ./nix/k3s-worker-node.nix;
+        dockerImageBuilder = import ./nix/docker-image-builder.nix;
+        minio = import ./nix/minio.nix;
+      };
+    };
 }

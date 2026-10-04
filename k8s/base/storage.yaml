@@ -8,31 +8,6 @@ volumeBindingMode: Immediate
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: pv-prometheus
-  labels:
-    m-ai/storage: prometheus
-spec:
-  storageClassName: manual
-  capacity:
-    storage: 10Gi
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
-  hostPath:
-    path: "/k3s-prometheus"
-    type: DirectoryOrCreate
-  nodeAffinity:
-    required:
-      nodeSelectorTerms:
-        - matchExpressions:
-            - key: m-ai/observability
-              operator: In
-              values:
-                - "true"
----
-apiVersion: v1
-kind: PersistentVolume
-metadata:
   name: pv-minecraft
   labels:
     type: local
@@ -43,7 +18,7 @@ spec:
   accessModes:
     - ReadWriteOnce
   hostPath:
-    path: "/k3s-pv"
+    path: "/btrfs/k3s-pv"
   nodeAffinity:
     required:
       nodeSelectorTerms:
